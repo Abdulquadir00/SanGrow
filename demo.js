@@ -1,5 +1,9 @@
+/**
+ * Main script for website interactivity.
+ * Manages mobile menu, navigation scroll, service modal, counter animations, video debugging, and Lucide icons.
+ */
 document.addEventListener('DOMContentLoaded', () => {
-  // Configuration
+  // Configuration object for selectors, classes, and settings
   const CONFIG = {
     selectors: {
       mobileMenu: '#mobileMenu',
@@ -14,11 +18,12 @@ document.addEventListener('DOMContentLoaded', () => {
       closeModal: '#close-modal',
       exploreLinks: '[data-service]',
       counters: '.counter',
-      aboutSection: '#about'
+      aboutSection: '#about',
+      cards:'.card',
+      slideUpElements: '.animate-slide-up'
     },
     classes: {
       hidden: 'hidden',
-      navHidden: 'nav-hidden',
       noScroll: 'no-scroll'
     },
     scroll: {
@@ -27,18 +32,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // DOM Elements
+  // Cache DOM elements for performance
   const elements = Object.fromEntries(
     Object.entries(CONFIG.selectors).map(([key, selector]) => [
       key,
-      key === 'exploreLinks' || key === 'counters'
+      key === 'exploreLinks' || key === 'counters'|| key==='cards'||key === 'slideUpElements'
         ? document.querySelectorAll(selector)
         : document.querySelector(selector)
     ])
   );
 
-  // Utility: Focus Trap
-  const trapFocus = (element) => {
+  // Utility: Trap focus within an element for accessibility
+  function trapFocus(element) {
+    if (!element) return () => {};
     const focusable = element.querySelectorAll(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
@@ -48,95 +54,96 @@ document.addEventListener('DOMContentLoaded', () => {
     const last = focusable[focusable.length - 1];
 
     const handleKeydown = (e) => {
-      if (e.key !== 'Tab') return;
-      e.preventDefault();
-      (e.shiftKey && document.activeElement === first ? last : first).focus();
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        (e.shiftKey && document.activeElement === first ? last : first).focus();
+      }
     };
 
     element.addEventListener('keydown', handleKeydown);
     return () => element.removeEventListener('keydown', handleKeydown);
-  };
+  }
 
-  // Feature: Mobile Menu
-  const mobileMenu = (() => {
+  // Feature: Mobile Menu Toggle
+  function initMobileMenu() {
+    if (!elements.mobileMenu || !elements.mobileMenuBtn || !elements.closeMenuBtn) {
+      console.error('Mobile menu elements missing');
+      return;
+    }
+
     let trapCleanup = null;
 
-    const toggle = (open) => {
+    const toggleMenu = (open) => {
       elements.mobileMenu.classList.toggle(CONFIG.classes.hidden, !open);
       elements.mobileMenu.setAttribute('aria-hidden', !open);
       elements.mobileMenuBtn.setAttribute('aria-expanded', open);
       elements.body.classList.toggle(CONFIG.classes.noScroll, open);
 
       const focusElement = open ? elements.closeMenuBtn : elements.mobileMenuBtn;
-      trapCleanup = open ? trapFocus(elements.mobileMenu) : trapCleanup?.();
+      trapCleanup?.();
+      if (open) trapCleanup = trapFocus(elements.mobileMenu);
       setTimeout(() => focusElement.focus(), 50);
     };
 
-    const init = () => {
-      if (!elements.mobileMenu || !elements.mobileMenuBtn || !elements.closeMenuBtn) return;
+    elements.mobileMenuBtn.addEventListener('click', () => toggleMenu(true));
+    elements.closeMenuBtn.addEventListener('click', () => toggleMenu(false));
+    document.querySelectorAll('.mobile-menu .nav-link').forEach(link =>
+      link.addEventListener('click', () => toggleMenu(false))
+    );
 
-      elements.mobileMenuBtn.addEventListener('click', () => toggle(true));
-      elements.closeMenuBtn.addEventListener('click', () => toggle(false));
-      document.querySelectorAll('.mobile-menu .nav-link').forEach(link =>
-        link.addEventListener('click', () => toggle(false))
-      );
+    document.addEventListener('click', (e) => {
+      if (!elements.mobileMenu.classList.contains(CONFIG.classes.hidden) &&
+          !e.target.closest('[data-menu-content]') &&
+          !e.target.closest(CONFIG.selectors.mobileMenuBtn)) {
+        toggleMenu(false);
+      }
+    });
 
-      document.addEventListener('click', (e) => {
-        if (!elements.mobileMenu.classList.contains(CONFIG.classes.hidden) &&
-            !e.target.closest('[data-menu-content]') &&
-            !e.target.closest(CONFIG.selectors.mobileMenuBtn)) {
-          toggle(false);
-        }
-      });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !elements.mobileMenu.classList.contains(CONFIG.classes.hidden)) {
+        toggleMenu(false);
+      }
+    });
+  }
 
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !elements.mobileMenu.classList.contains(CONFIG.classes.hidden)) {
-          toggle(false);
-        }
-      });
-    };
+  // Feature: Hide Navigation on Scroll Down
+  function initNavScroll() {
+    if (!elements.nav) return;
 
-    return { init };
-  })();
-
-  // Feature: Navigation Scroll
-  const navScroll = (() => {
     let lastScroll = 0;
     let debounceTimeout;
 
     const handleScroll = () => {
-      const currentScroll = window.pageYOffset;
-      const scrollDelta = currentScroll - lastScroll;
+      const currentScroll = window.scrollY;
+      if (currentScroll < CONFIG.scroll.threshold) {
+        elements.nav.classList.remove(CONFIG.classes.hidden);
+        lastScroll = currentScroll;
+        return;
+      }
 
-      if (Math.abs(scrollDelta) > CONFIG.scroll.threshold) {
-        elements.nav.classList.toggle(CONFIG.classes.navHidden, scrollDelta > 0 && currentScroll > 100);
+      if (Math.abs(currentScroll - lastScroll) > CONFIG.scroll.threshold) {
+        elements.nav.classList.toggle(CONFIG.classes.hidden, currentScroll > lastScroll);
         lastScroll = currentScroll;
       }
-
-      if (currentScroll < 100) {
-        elements.nav.classList.remove(CONFIG.classes.navHidden);
-      }
     };
 
-    const init = () => {
-      if (!elements.nav) return;
-      window.addEventListener('scroll', () => {
-        clearTimeout(debounceTimeout);
-        debounceTimeout = setTimeout(handleScroll, CONFIG.scroll.debounce);
-      }, { passive: true });
-    };
-
-    return { init };
-  })();
+    window.addEventListener('scroll', () => {
+      clearTimeout(debounceTimeout);
+      debounceTimeout = setTimeout(handleScroll, CONFIG.scroll.debounce);
+    }, { passive: true });
+  }
 
   // Feature: Service Modal
-  const serviceModal = (() => {
+  function initServiceModal() {
+    if (!elements.modal || !elements.modalTitle || !elements.modalDescription ||
+        !elements.closeModal || !elements.exploreLinks.length) return;
+
     let trapCleanup = null;
     let lastFocusedElement = null;
 
-    const open = (title, description) => {
-      elements.modalTitle.textContent = title;
-      elements.modalDescription.textContent = description;
+    const openModal = (title, description) => {
+      elements.modalTitle.textContent = title || 'Service';
+      elements.modalDescription.textContent = description || 'Contact us to learn more!';
       elements.modal.classList.remove(CONFIG.classes.hidden);
       elements.modal.setAttribute('aria-hidden', 'false');
       elements.body.classList.add(CONFIG.classes.noScroll);
@@ -144,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!elements.modal.querySelector('.btn-primary')) {
         const contactBtn = Object.assign(document.createElement('a'), {
           href: '#contact',
-          className: 'btn-primary inline-block px-6 py-3 rounded-lg font-medium text-white hover:shadow-md transition-all mt-4',
+          className: 'btn-primary',
           textContent: 'Contact Us'
         });
         elements.modalDescription.insertAdjacentElement('afterend', contactBtn);
@@ -154,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => elements.closeModal.focus(), 50);
     };
 
-    const close = () => {
+    const closeModal = () => {
       elements.modal.classList.add(CONFIG.classes.hidden);
       elements.modal.setAttribute('aria-hidden', 'true');
       elements.body.classList.remove(CONFIG.classes.noScroll);
@@ -163,129 +170,156 @@ document.addEventListener('DOMContentLoaded', () => {
       trapCleanup = lastFocusedElement = null;
     };
 
-    const init = () => {
-      if (!elements.modal || !elements.modalTitle || !elements.modalDescription ||
-          !elements.closeModal || !elements.exploreLinks.length) return;
+    elements.exploreLinks.forEach(link =>
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        lastFocusedElement = e.target;
+        openModal(link.dataset.service, link.dataset.description);
+      })
+    );
 
-      elements.exploreLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-          e.preventDefault();
-          lastFocusedElement = e.target;
-          open(
-            link.dataset.service || 'Service',
-            link.dataset.description || 'Learn more about our services by contacting us!'
-          );
-        });
-      });
+    elements.closeModal.addEventListener('click', closeModal);
+    elements.modal.addEventListener('click', (e) => {
+      if (e.target === elements.modal) closeModal();
+    });
 
-      elements.closeModal.addEventListener('click', close);
-      elements.modal.addEventListener('click', (e) => {
-        if (e.target === elements.modal) close();
-      });
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !elements.modal.classList.contains(CONFIG.classes.hidden)) {
-          close();
-        }
-      });
-    };
-
-    return { init };
-  })();
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !elements.modal.classList.contains(CONFIG.classes.hidden)) {
+        closeModal();
+      }
+    });
+  }
 
   // Feature: Counter Animation
-  const counters = (() => {
-    const animate = (element, target, suffix, duration) => {
-      let start = 0;
-      const increment = target / (duration / 16);
-      const startTime = performance.now();
-
-      const update = (currentTime) => {
-        const elapsed = currentTime - startTime;
-        start = (elapsed / duration) * target;
-        element.textContent = Math.floor(start) + suffix;
-        if (elapsed < duration) requestAnimationFrame(update);
-      };
-
-      requestAnimationFrame(update);
-    };
-
-    const init = () => {
-      if (!elements.counters.length) return;
-
-      if ('IntersectionObserver' in window) {
-        const observer = new IntersectionObserver((entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              elements.counters.forEach((counter) => {
-                animate(
-                  counter,
-                  parseInt(counter.getAttribute('data-target')),
-                  counter.getAttribute('data-suffix') || '',
-                  1500
-                );
-              });
-              observer.unobserve(entry.target);
-            }
-          });
-        }, { threshold: 0.2 });
-
-        if (elements.aboutSection) observer.observe(elements.aboutSection);
-      } else {
-        elements.counters.forEach((counter) => {
-          animate(
-            counter,
-            parseInt(counter.getAttribute('data-target')),
-            counter.getAttribute('data-suffix') || '',
-            1500
-          );
-        });
+  // Animate counter from 0 to target value
+      function animateCounter(element, target, suffix, duration) {
+        let start = 0;
+        const startTime = performance.now();
+        const update = (currentTime) => {
+          const elapsed = (currentTime - startTime) / duration;
+          const progress = Math.min(elapsed, 1);
+          start = progress * target;
+          element.textContent = Math.floor(start) + (suffix || '');
+          if (progress < 1) requestAnimationFrame(update);
+        };
+        requestAnimationFrame(update);
       }
-    };
 
-    return { init };
-  })();
+      // Initialize counters and card animations
+      function initCounters() {
+        if (!elements.counters.length || !elements.aboutSection) return;
+
+        if ('IntersectionObserver' in window) {
+          const observer = new IntersectionObserver((entries, observer) => {
+            if (entries[0].isIntersecting) {
+              elements.counters.forEach(counter => 
+                animateCounter(
+                  counter,
+                  parseInt(counter.dataset.target),
+                  counter.dataset.suffix,
+                  1500
+                )
+              );
+              elements.cards.forEach((card, index) => {
+                setTimeout(() => card.classList.add('visible'), index * 200);
+              });
+              observer.unobserve(elements.aboutSection);
+            }
+          }, { threshold: 0.3 });
+          observer.observe(elements.aboutSection);
+        } else {
+          // Fallback for older browsers
+          elements.counters.forEach(counter => 
+            animateCounter(
+              counter,
+              parseInt(counter.dataset.target),
+              counter.dataset.suffix,
+              1500
+            )
+          );
+          elements.cards.forEach(card => card.classList.add('visible'));
+        }
+      }
+
 
   // Feature: Video Debug
-  const videoDebug = (() => {
-    const init = () => {
-      if (!elements.heroVideo) return;
-      elements.heroVideo.addEventListener('error', () =>
-        console.error('Video failed to load. Check source file: hero-video.mp4')
-      );
-      elements.heroVideo.addEventListener('loadeddata', () =>
-        console.log('Video loaded successfully')
-      );
-    };
+  function initVideoDebug() {
+    if (!elements.heroVideo) return;
+    elements.heroVideo.addEventListener('error', () =>
+      console.error('Video failed to load: hero1.webm')
+    );
+    elements.heroVideo.addEventListener('loadeddata', () =>
+      console.log('Video loaded successfully')
+    );
+  }
 
-    return { init };
-  })();
-
-  // Feature: Lucide Icons
-  const lucideIcons = (() => {
-    const init = () => {
-      if (typeof lucide === 'undefined') {
-        console.error('Lucide library not loaded');
-        return;
+  // Initialize scroll-triggered animations
+      function initScrollAnimations() {
+        if ('IntersectionObserver' in window) {
+          const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                observer.unobserve(entry.target);
+              }
+            });
+          }, { threshold: 0.2 });
+          elements.slideUpElements.forEach(el => observer.observe(el));
+        } else {
+          elements.slideUpElements.forEach(el => el.classList.add('visible'));
+        }
       }
-      lucide.createIcons();
-    };
 
-    return { init };
-  })();
+      // Newsletter subscription handler
+      function subscribeNewsletter() {
+        const emailInput = document.getElementById('newsletter-email');
+        const message = document.getElementById('newsletter-message');
+        const email = emailInput.value.trim();
+
+        if (!email) {
+          message.textContent = 'Please enter a valid email address.';
+          message.classList.remove('hidden', 'text-green-400');
+          message.classList.add('text-red-400');
+          return;
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          message.textContent = 'Please enter a valid email address.';
+          message.classList.remove('hidden', 'text-green-400');
+          message.classList.add('text-red-400');
+          return;
+        }
+
+        message.textContent = 'Thank you for subscribing!';
+        message.classList.remove('hidden', 'text-red-400');
+        message.classList.add('text-green-400');
+        emailInput.value = '';
+      }
+
+  // Feature: Initialize Lucide Icons
+  function initLucideIcons() {
+    if (typeof lucide === 'undefined') {
+      console.error('Lucide library not loaded');
+      return;
+    }
+    lucide.createIcons();
+  }
 
   // Initialize all features
-  const init = () => {
+  function initialize() {
     try {
-      lucideIcons.init();
-      videoDebug.init();
-      mobileMenu.init();
-      navScroll.init();
-      serviceModal.init();
-      counters.init();
+      initLucideIcons();
+      initVideoDebug();
+      initMobileMenu();
+      initNavScroll();
+      initServiceModal();
+      initCounters();
+      initScrollAnimations();
     } catch (error) {
       console.error('Initialization error:', error);
     }
-  };
+  }
 
-  init();
+  initialize();
 });
