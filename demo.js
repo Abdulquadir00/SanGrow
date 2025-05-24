@@ -1,6 +1,6 @@
 /**
  * Main script for website interactivity.
- * Manages mobile menu, navigation scroll, service modal, counter animations, video debugging, and Lucide icons.
+ * Manages mobile menu, navigation scroll, service modal, counter animations, video debugging, Lucide icons, and contact form.
  */
 document.addEventListener('DOMContentLoaded', () => {
   // Configuration object for selectors, classes, and settings
@@ -19,8 +19,19 @@ document.addEventListener('DOMContentLoaded', () => {
       exploreLinks: '[data-service]',
       counters: '.counter',
       aboutSection: '#about',
-      cards:'.card',
-      slideUpElements: '.animate-slide-up'
+      cards: '.card',
+      slideUpElements: '.animate-slide-up',
+      contactForm: '#contact-form',
+      submitBtn: '#submit-btn',
+      btnText: '#btn-text',
+      btnSpinner: '#btn-spinner',
+      formInputs: {
+        name: '#name',
+        email: '#email',
+        phone: '#phone',
+        company: '#company',
+        message: '#message'
+      }
     },
     classes: {
       hidden: 'hidden',
@@ -29,6 +40,16 @@ document.addEventListener('DOMContentLoaded', () => {
     scroll: {
       threshold: 100,
       debounce: 50
+    },
+    form: {
+      rateLimitInterval: 30000, // 30 seconds in milliseconds
+      maxLengths: {
+        name: 100,
+        email: 100,
+        phone: 20,
+        company: 100,
+        message: 1000
+      }
     }
   };
 
@@ -36,8 +57,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const elements = Object.fromEntries(
     Object.entries(CONFIG.selectors).map(([key, selector]) => [
       key,
-      key === 'exploreLinks' || key === 'counters'|| key==='cards'||key === 'slideUpElements'
+      key === 'exploreLinks' || key === 'counters' || key === 'cards' || key === 'slideUpElements'
         ? document.querySelectorAll(selector)
+        : key === 'formInputs'
+        ? Object.fromEntries(
+            Object.entries(selector).map(([inputKey, inputSelector]) => [
+              inputKey,
+              document.querySelector(inputSelector)
+            ])
+          )
         : document.querySelector(selector)
     ])
   );
@@ -62,6 +90,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     element.addEventListener('keydown', handleKeydown);
     return () => element.removeEventListener('keydown', handleKeydown);
+  }
+
+  // Utility: Sanitize input to prevent XSS
+  function sanitizeInput(input) {
+    const div = document.createElement('div');
+    div.textContent = input;
+    return div.innerHTML.replace(/[<>]/g, '');
   }
 
   // Feature: Mobile Menu Toggle
@@ -92,9 +127,11 @@ document.addEventListener('DOMContentLoaded', () => {
     );
 
     document.addEventListener('click', (e) => {
-      if (!elements.mobileMenu.classList.contains(CONFIG.classes.hidden) &&
-          !e.target.closest('[data-menu-content]') &&
-          !e.target.closest(CONFIG.selectors.mobileMenuBtn)) {
+      if (
+        !elements.mobileMenu.classList.contains(CONFIG.classes.hidden) &&
+        !e.target.closest('[data-menu-content]') &&
+        !e.target.closest(CONFIG.selectors.mobileMenuBtn)
+      ) {
         toggleMenu(false);
       }
     });
@@ -135,8 +172,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Feature: Service Modal
   function initServiceModal() {
-    if (!elements.modal || !elements.modalTitle || !elements.modalDescription ||
-        !elements.closeModal || !elements.exploreLinks.length) return;
+    if (
+      !elements.modal ||
+      !elements.modalTitle ||
+      !elements.modalDescription ||
+      !elements.closeModal ||
+      !elements.exploreLinks.length
+    ) return;
 
     let trapCleanup = null;
     let lastFocusedElement = null;
@@ -191,56 +233,56 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Feature: Counter Animation
-  // Animate counter from 0 to target value
-      function animateCounter(element, target, suffix, duration) {
-        let start = 0;
-        const startTime = performance.now();
-        const update = (currentTime) => {
-          const elapsed = (currentTime - startTime) / duration;
-          const progress = Math.min(elapsed, 1);
-          start = progress * target;
-          element.textContent = Math.floor(start) + (suffix || '');
-          if (progress < 1) requestAnimationFrame(update);
-        };
-        requestAnimationFrame(update);
-      }
+  function animateCounter(element, target, suffix, duration) {
+    let start = 0;
+    const startTime = performance.now();
+    const update = (currentTime) => {
+      const elapsed = (currentTime - startTime) / duration;
+      const progress = Math.min(elapsed, 1);
+      start = progress * target;
+      element.textContent = Math.floor(start) + (suffix || '');
+      if (progress < 1) requestAnimationFrame(update);
+    };
+    requestAnimationFrame(update);
+  }
 
-      // Initialize counters and card animations
-      function initCounters() {
-        if (!elements.counters.length || !elements.aboutSection) return;
+  // Initialize counters and card animations
+  function initCounters() {
+    if (!elements.counters.length || !elements.aboutSection) return;
 
-        if ('IntersectionObserver' in window) {
-          const observer = new IntersectionObserver((entries, observer) => {
-            if (entries[0].isIntersecting) {
-              elements.counters.forEach(counter => 
-                animateCounter(
-                  counter,
-                  parseInt(counter.dataset.target),
-                  counter.dataset.suffix,
-                  1500
-                )
-              );
-              elements.cards.forEach((card, index) => {
-                setTimeout(() => card.classList.add('visible'), index * 200);
-              });
-              observer.unobserve(elements.aboutSection);
-            }
-          }, { threshold: 0.3 });
-          observer.observe(elements.aboutSection);
-        } else {
-          // Fallback for older browsers
-          elements.counters.forEach(counter => 
-            animateCounter(
-              counter,
-              parseInt(counter.dataset.target),
-              counter.dataset.suffix,
-              1500
-            )
-          );
-          elements.cards.forEach(card => card.classList.add('visible'));
-        }
-      }
-
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver(
+        (entries, observer) => {
+          if (entries[0].isIntersecting) {
+            elements.counters.forEach(counter =>
+              animateCounter(
+                counter,
+                parseInt(counter.dataset.target),
+                counter.dataset.suffix,
+                1500
+              )
+            );
+            elements.cards.forEach((card, index) => {
+              setTimeout(() => card.classList.add('visible'), index * 200);
+            });
+            observer.unobserve(elements.aboutSection);
+          }
+        },
+        { threshold: 0.3 }
+      );
+      observer.observe(elements.aboutSection);
+    } else {
+      elements.counters.forEach(counter =>
+        animateCounter(
+          counter,
+          parseInt(counter.dataset.target),
+          counter.dataset.suffix,
+          1500
+        )
+      );
+      elements.cards.forEach(card => card.classList.add('visible'));
+    }
+  }
 
   // Feature: Video Debug
   function initVideoDebug() {
@@ -253,49 +295,143 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   }
 
-  // Initialize scroll-triggered animations
-      function initScrollAnimations() {
-        if ('IntersectionObserver' in window) {
-          const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-              if (entry.isIntersecting) {
-                entry.target.classList.add('visible');
-                observer.unobserve(entry.target);
-              }
-            });
-          }, { threshold: 0.2 });
-          elements.slideUpElements.forEach(el => observer.observe(el));
-        } else {
-          elements.slideUpElements.forEach(el => el.classList.add('visible'));
-        }
+  // Feature: Scroll-triggered Animations
+  function initScrollAnimations() {
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('visible');
+              observer.unobserve(entry.target);
+            }
+          });
+        },
+        { threshold: 0.2 }
+      );
+      elements.slideUpElements.forEach(el => observer.observe(el));
+    } else {
+      elements.slideUpElements.forEach(el => el.classList.add('visible'));
+    }
+  }
+
+  // Feature: Contact Form with EmailJS
+  function initContactForm() {
+    if (
+      !elements.contactForm ||
+      !elements.submitBtn ||
+      !elements.btnText ||
+      !elements.btnSpinner ||
+      !elements.formInputs.email
+    ) {
+      console.error('Contact form elements missing');
+      return;
+    }
+
+    // Initialize EmailJS (ideally, this should be handled server-side)
+    emailjs.init('JQ8fQ2l-QXWp78b7U'); // Replace with your EmailJS User ID
+
+    let lastSubmitTime = 0;
+
+    elements.contactForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // Rate limiting check
+      const currentTime = Date.now();
+      if (currentTime - lastSubmitTime < CONFIG.form.rateLimitInterval) {
+        alert('Please wait before submitting again.');
+        return;
       }
 
-      // Newsletter subscription handler
-      function subscribeNewsletter() {
-        const emailInput = document.getElementById('newsletter-email');
-        const message = document.getElementById('newsletter-message');
-        const email = emailInput.value.trim();
+      // Validate and sanitize inputs
+      const inputs = {
+        name: elements.formInputs.name?.value?.trim() || '',
+        email: elements.formInputs.email?.value?.trim() || '',
+        phone: elements.formInputs.phone?.value?.trim() || '',
+        company: elements.formInputs.company?.value?.trim() || '',
+        message: elements.formInputs.message?.value?.trim() || ''
+      };
 
-        if (!email) {
-          message.textContent = 'Please enter a valid email address.';
-          message.classList.remove('hidden', 'text-green-400');
-          message.classList.add('text-red-400');
-          return;
-        }
-
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-          message.textContent = 'Please enter a valid email address.';
-          message.classList.remove('hidden', 'text-green-400');
-          message.classList.add('text-red-400');
-          return;
-        }
-
-        message.textContent = 'Thank you for subscribing!';
-        message.classList.remove('hidden', 'text-red-400');
-        message.classList.add('text-green-400');
-        emailInput.value = '';
+      // Email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(inputs.email)) {
+        alert('Please enter a valid email address.');
+        return;
       }
+
+      // Length validation
+      if (
+        inputs.name.length > CONFIG.form.maxLengths.name ||
+        inputs.email.length > CONFIG.form.maxLengths.email ||
+        inputs.phone.length > CONFIG.form.maxLengths.phone ||
+        inputs.company.length > CONFIG.form.maxLengths.company ||
+        inputs.message.length > CONFIG.form.maxLengths.message
+      ) {
+        alert('Input exceeds maximum length.');
+        return;
+      }
+
+      // Sanitize inputs
+      const formData = {
+        name: sanitizeInput(inputs.name) || 'Not provided',
+        email: sanitizeInput(inputs.email),
+        phone: sanitizeInput(inputs.phone) || 'Not provided',
+        company: sanitizeInput(inputs.company) || 'Not provided',
+        message: sanitizeInput(inputs.message) || 'Not provided'
+      };
+
+      // Show loading state
+      elements.submitBtn.disabled = true;
+      elements.btnText.textContent = 'Sending...';
+      elements.btnSpinner.classList.remove(CONFIG.classes.hidden);
+
+      try {
+        const response = await emailjs.send('service_p4dfeu6', 'template_nh9ws5m', formData);
+        console.log('Email sent successfully!', response.status);
+        alert('Your message has been sent successfully!');
+        elements.contactForm.reset();
+        lastSubmitTime = Date.now();
+        // Redirect to thank-you page
+        window.location.href = '/thanku.html';
+      } catch (error) {
+        console.error('Failed to send email:', error.message);
+        alert('Failed to send your message. Please try again later.');
+      } finally {
+        elements.submitBtn.disabled = false;
+        elements.btnText.textContent = 'Send Message';
+        elements.btnSpinner.classList.add(CONFIG.classes.hidden);
+      }
+    });
+  }
+
+  // Feature: Newsletter Subscription
+  function subscribeNewsletter() {
+    const emailInput = document.getElementById('newsletter-email');
+    const message = document.getElementById('newsletter-message');
+    if (!emailInput || !message) return;
+
+    const email = emailInput.value.trim();
+
+    if (!email) {
+      message.textContent = 'Please enter a valid email address.';
+      message.classList.remove('hidden', 'text-green-400');
+      message.classList.add('text-red-400');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      message.textContent = 'Please enter a valid email address.';
+      message.classList.remove('hidden', 'text-green-400');
+      message.classList.add('text-red-400');
+      return;
+    }
+
+    message.textContent = 'Thank you for subscribing!';
+    message.classList.remove('hidden', 'text-red-400');
+    message.classList.add('text-green-400');
+    emailInput.value = '';
+  }
 
   // Feature: Initialize Lucide Icons
   function initLucideIcons() {
@@ -316,6 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
       initServiceModal();
       initCounters();
       initScrollAnimations();
+      initContactForm();
     } catch (error) {
       console.error('Initialization error:', error);
     }
